@@ -1,0 +1,61 @@
+#!/bin/sh
+# Lumo AppImage entry point. GTK, WebKitGTK, libsoup and D-Bus come from the host (see
+# packaging/README.md); this script only fills in what a host may lack and what an .deb/.rpm
+# install would have set up.
+HERE="$(dirname "$(readlink -f "$0")")"
+
+# 1. The tray icon's library. Tauri dlopens libayatana-appindicator3.so.1 (or the older
+#    libappindicator3.so.1) at start and aborts without one. The bundled copy and its
+#    dbusmenu/indicator dependencies go on the library path only when the host has neither, so
+#    a host that has them keeps its own, and the programs Lumo starts (its shell connector, MCP
+#    servers) inherit nothing from the AppImage.
+has_lib() {
+    if command -v ldconfig >/dev/null 2>&1 || [ -x /sbin/ldconfig ]; then
+        { ldconfig -p 2>/dev/null || /sbin/ldconfig -p 2>/dev/null; } | grep -qF "$1 " && return 0
+    fi
+    for dir in /usr/lib/x86_64-linux-gnu /usr/lib64 /usr/lib /lib/x86_64-linux-gnu /lib64; do
+        [ -e "$dir/$1" ] && return 0
+    done
+    return 1
+}
+if ! has_lib libayatana-appindicator3.so.1 && ! has_lib libappindicator3.so.1; then
+    export LD_LIBRARY_PATH="$HERE/usr/lib/fallback${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
+
+# 2. The proton-lumo:// URL handler. Sign-in happens in the user's browser, which hands the
+#    session back on a proton-lumo:// link; the .deb and .rpm register that scheme through
+#    their installed desktop entry, and an AppImage has none. So the AppImage's own path is
+#    registered for it, in the user's applications folder, rewritten only when the AppImage
+#    has moved. LUMO_APPIMAGE_NO_URL_HANDLER=1 turns this off.
+register_url_handler() {
+    apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+    name="lumo-appimage-url-handler.desktop"
+    case "$APPIMAGE" in
+        # characters an Exec line would need escaped; such a path is left unregistered
+        *'"'*|*'`'*|*'$'*|*'\'*|*'%'*|*"
+"*)
+            echo "Lumo AppImage: its path has characters a desktop entry can't hold; proton-lumo:// links are not registered" >&2
+            return 0 ;;
+    esac
+    entry="[Desktop Entry]
+Type=Application
+Name=Lumo (AppImage URL handler)
+NoDisplay=true
+Exec=\"$APPIMAGE\" %u
+MimeType=x-scheme-handler/proton-lumo;
+Terminal=false"
+    if [ "$(cat "$apps/$name" 2>/dev/null)" != "$entry" ]; then
+        mkdir -p "$apps" && printf '%s\n' "$entry" > "$apps/$name.tmp" && mv -f "$apps/$name.tmp" "$apps/$name" || return 0
+        command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q "$apps" 2>/dev/null
+        command -v kbuildsycoca6 >/dev/null 2>&1 && kbuildsycoca6 --noincremental >/dev/null 2>&1 &
+    fi
+    if command -v xdg-mime >/dev/null 2>&1 &&
+       [ "$(xdg-mime query default x-scheme-handler/proton-lumo 2>/dev/null)" != "$name" ]; then
+        xdg-mime default "$name" x-scheme-handler/proton-lumo 2>/dev/null
+    fi
+}
+if [ -n "${APPIMAGE:-}" ] && [ "${LUMO_APPIMAGE_NO_URL_HANDLER:-0}" != 1 ]; then
+    register_url_handler
+fi
+
+exec "$HERE/usr/bin/lumo-desktop" "$@"

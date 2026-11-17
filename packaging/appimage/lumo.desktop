@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Lumo
+Comment=Lumo: your private assistant (unofficial AppImage)
+Exec=lumo-desktop %u
+Icon=lumo
+Categories=Office;
+MimeType=x-scheme-handler/proton-lumo;
+StartupWMClass=lumo-desktop
+Terminal=false
+X-AppImage-Version=@VERSION@

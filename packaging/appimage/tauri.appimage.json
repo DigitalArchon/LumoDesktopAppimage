@@ -1,0 +1,10 @@
+{
+  "build": {
+    "beforeBuildCommand": "true"
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": []
+    }
+  }
+}
