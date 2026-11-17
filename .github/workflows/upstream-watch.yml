@@ -1,0 +1,90 @@
+name: Upstream watch
+
+# Once a day: when the master branch of Proton's lumo-desktop is a newer version than
+# packaging/upstream.env pins, pin that commit (RELEASE=1), commit the pin to main, tag it
+# v<version>-1, and run release.yml on the tag, which leaves a draft release to check and
+# publish. A tag pushed with the workflow's own token starts no other workflow, hence the call.
+#
+# A master that moved without a new version (Proton's merges are release merges, so this
+# shouldn't happen) is reported in the log and nothing is released.
+# Run by hand (Actions → Upstream watch → Run workflow) to check at once.
+#
+# GitHub turns scheduled workflows off after 60 days without activity in the repository, and
+# says so by email; re-enable it under Actions. The pin commits count as activity.
+
+on:
+  schedule:
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: upstream-watch
+
+jobs:
+  pin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write # the pin commit and its tag
+    outputs:
+      tag: ${{ steps.pin.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: true # pushes the pin commit and tag
+
+      - name: Pin a new upstream version
+        id: pin
+        run: |
+          . packaging/upstream.env
+          case "$UPSTREAM_REPO" in
+            https://*) ;;
+            *) echo "UPSTREAM_REPO must be https://" >&2; exit 1 ;;
+          esac
+          head="$(git ls-remote "$UPSTREAM_REPO" refs/heads/master | cut -f1)"
+          [[ "$head" =~ ^[0-9a-f]{40}$ ]] || { echo "no master branch in $UPSTREAM_REPO" >&2; exit 1; }
+          if [ "$head" = "$UPSTREAM_COMMIT" ]; then
+            echo "Up to date: $UPSTREAM_VERSION ($head)"
+            exit 0
+          fi
+          up="$(mktemp -d)"
+          git init -q --bare "$up"
+          git --git-dir="$up" fetch -q --depth 1 "$UPSTREAM_REPO" "$head"
+          version="$(git --git-dir="$up" show "$head:src-tauri/tauri.conf.json" \
+            | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "unexpected upstream version '$version'" >&2; exit 1; }
+          newest="$(printf '%s\n%s\n' "$UPSTREAM_VERSION" "$version" | sort -V | tail -1)"
+          if [ "$version" = "$UPSTREAM_VERSION" ] || [ "$newest" != "$version" ]; then
+            echo "master moved to $head, but it is version $version (pinned: $UPSTREAM_VERSION); nothing released"
+            exit 0
+          fi
+          tag="v$version-1"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            echo "$tag exists already, but upstream.env doesn't pin $version: fix the pin by hand" >&2
+            exit 1
+          fi
+          sed -i -e "s/^UPSTREAM_COMMIT=.*/UPSTREAM_COMMIT=$head/" \
+                 -e "s/^UPSTREAM_VERSION=.*/UPSTREAM_VERSION=$version/" \
+                 -e "s/^RELEASE=.*/RELEASE=1/" packaging/upstream.env
+          git diff --stat
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -am "Package Lumo $version (upstream ${head:0:12})"
+          git tag -a "$tag" -m "Lumo $version, packaging release 1"
+          git push --atomic origin HEAD:main "refs/tags/$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Pinned Lumo $version ($head) and tagged $tag" >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    needs: pin
+    if: needs.pin.outputs.tag != ''
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.pin.outputs.tag }}
