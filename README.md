@@ -4,8 +4,8 @@ An AppImage of [Lumo Desktop](https://github.com/ProtonLumo/lumo-desktop), Proto
 for its Lumo AI assistant, for the Linux distributions Proton doesn't package it for: Arch,
 CachyOS, Manjaro, openSUSE, and anything else that isn't served by Proton's `.deb` and `.rpm`.
 
-It's built from Proton's published source, **unmodified**, by a build anyone can repeat and get
-the same file, byte for byte.
+It's built from Proton's published source **with no changes to Proton's code**, by a build
+anyone can repeat and get the same file, byte for byte.
 
 > **Unofficial.** This project isn't affiliated with, sponsored or endorsed by Proton AG.
 > "Proton" and "Lumo" are trademarks of Proton AG. Report problems with Lumo itself to
@@ -38,7 +38,7 @@ saved credentials: KWallet on KDE, GNOME Keyring on GNOME. Both are usually alre
 **Updates.** Lumo's built-in updater is switched off in this build, because Proton's update
 server only offers `.deb` and `.rpm` packages. To update, download the new release, or use
 [Gear Lever](https://github.com/mijorus/gearlever) or AppImageUpdate. The AppImage tells them
-where its releases are, and they download only the parts that changed.
+where its releases are. AppImageUpdate downloads only the parts that changed.
 
 ### What it does to your system
 
@@ -48,19 +48,21 @@ each time it starts. It writes `~/.local/share/applications/lumo-appimage-url-ha
 pointing at wherever the AppImage is now, and makes that the handler for `proton-lumo://`. Set
 `LUMO_APPIMAGE_NO_URL_HANDLER=1` to stop it, and delete the file to remove it.
 
-Lumo's own settings are where Proton's build keeps them (`~/.config/me.proton.lumo-app/`), and
-its secrets are in your keyring.
+Lumo keeps its data where Proton's build does: settings in `~/.config/me.proton.lumo-app/`,
+web data and logs in `~/.local/share/me.proton.lumo-app/`, and secrets in your keyring.
 
 ## How it differs from Proton's Linux packages
 
-The source isn't changed. Four things are set differently when it's built:
+Proton's code isn't changed. Four things are set differently when it's built, all through the
+build's own settings rather than by editing Proton's files. (The build does correct one line of
+Proton's `Cargo.lock`, the lockfile; see [the reproducible build](#the-reproducible-build).)
 
 | | Proton's `.deb`/`.rpm` | This AppImage |
 |---|---|---|
 | Web app the window loads | `https://lumo.proton.me` | The same. It has to be set at build time: without it, the source defaults to `lumo.proton.dev`, a Proton development environment |
 | In-app updater | Proton's update server | Off (no update address) |
 | `proton-lumo://` links | Registered by the package | Registered by the AppImage when it starts (above) |
-| Crash reports | Sent to Proton | Off: Proton's reporting key isn't public |
+| Crash and error reports | Sent to Proton when its build includes Proton's reporting key (there's no setting for it) | Off: the key isn't in the source, and this build doesn't add one |
 
 The AppImage contains the Lumo program and a spare copy of the tray-icon library
 (`libayatana-appindicator`), used only when your system has none. Without one, Lumo can't start.
@@ -109,7 +111,7 @@ quickest to most thorough:
 # the file isn't damaged
 sha256sum -c Lumo-<version>-x86_64.AppImage.sha256
 
-# GitHub's workflow built it from this repository (needs the GitHub CLI)
+# GitHub's workflow built it from this repository (needs GitHub CLI 2.49 or newer)
 gh attestation verify Lumo-<version>-x86_64.AppImage --repo DigitalArchon/LumoDesktopAppimage
 
 # it is what the source builds to: rebuild it yourself and compare
@@ -132,25 +134,30 @@ maintainer. What makes it so:
   - Rust (1.99.0), Node.js (22.23.4) and the AppImage runtime, by SHA-256.
 
   Proton's commit is pinned by its id. Its npm packages and Rust crates are checked against the
-  lockfiles Proton commits. Nothing is fetched by a name that could point to something else
-  tomorrow.
+  hashes in the lockfiles Proton commits. Each download is checked against a pinned hash, or for
+  Ubuntu's packages the archive's signatures, so a download that changed would stop the build
+  rather than change the AppImage.
 - **It builds in a container** (rootless Podman), from the committed files only. The build
   refuses to run while anything in `packaging/` differs from the commit.
-- **Time and place are taken out.** Every timestamp is the commit's time (`SOURCE_DATE_EPOCH`),
-  in the program and the AppImage alike. The folders the build ran in are mapped out of the
+- **Time and place are taken out.** Every timestamp the build writes is the commit's time
+  (`SOURCE_DATE_EPOCH`): the files in the AppImage, its file system, and the `.zsync`. The folders the build ran in are mapped out of the
   compiled program (Rust's `--remap-path-prefix`, the C compiler's `-ffile-prefix-map`), and the
   build fails if a build folder still shows up anywhere in the AppImage.
 - **File order is fixed.** The AppImage's file system is packed in sorted order with fixed
   owners. One less obvious case: Tauri compiles a list of the app's script hashes into the
   program, in whatever order the disk lists the files. ext4 orders each folder differently on
-  each machine, so the same commit used to give a different program on every computer. The build
-  now puts those files in a tmpfs, which lists files in the order they were created, and creates
-  them in that order. It checks that every folder lists sorted, and fails rather than guess on a
-  kernel where they don't.
+  each machine, so the same commit used to give a different program on different computers. The
+  build now puts those files in a tmpfs, which lists files in the order they were created (oldest
+  or newest first, depending on the kernel). It works out which, creates the files so every folder
+  lists in sorted order, checks that they do, and fails on a kernel where they don't.
 - **Two upstream quirks are handled:**
-  - Proton's `Cargo.lock` for 0.5.9 still names the app as 0.5.8. Only that one line is
-    corrected, and every other difference between the lockfile and the source still stops the
-    build.
+  - Proton's `Cargo.lock` for 0.5.9 still records the app itself as 0.5.8. The build changes
+    that one line to 0.5.9, which is what Cargo does on its own in a normal build. Proton's
+    build tool runs Cargo without `--locked`, so Proton's own 0.5.9 build should have made the
+    same change. This build runs Cargo with `--locked`, which forbids any other change to the
+    lockfile, so every other mismatch still stops the build. Nothing is compiled from that line:
+    the version built in comes from `Cargo.toml`. This is the only change this build makes to
+    Proton's files.
   - The app's own default web address is Proton's development environment, so the production
     one is set (above).
 

@@ -129,12 +129,19 @@ jobs:
           APPIMAGE: ${{ needs.build.outputs.appimage }}
           TAG: ${{ needs.build.outputs.tag }}
         run: |
+          version="${TAG#v}"
           {
-            echo "Unofficial AppImage of Proton's Lumo Desktop ${TAG#v}, built from Proton's source"
-            echo "unmodified. See the README for what it needs and how it differs from Proton's .deb/.rpm."
+            echo "Unofficial AppImage of Proton's Lumo Desktop ${version%-*} (packaging release ${version##*-}),"
+            echo "built from Proton's source with no changes to Proton's code. See the README for what it"
+            echo "needs and how it differs from Proton's .deb/.rpm."
             echo
-            echo "## Changes in Lumo (from Proton's changelog)"
-            cat dist/upstream-changes.md
+            echo "## Changes in Lumo ${version%-*} (from Proton's changelog)"
+            if grep -q '[^[:space:]]' dist/upstream-changes.md; then
+              cat dist/upstream-changes.md
+            else
+              echo
+              echo "Proton's changelog has no entry for ${version%-*}."
+            fi
             echo
             echo "## Checking the download"
             echo
@@ -142,15 +149,15 @@ jobs:
             cat "dist/$APPIMAGE.sha256"
             echo '```'
             echo
-            echo "Built by GitHub Actions from \`$TAG\` and attested. With the GitHub CLI:"
+            echo "Built by GitHub Actions from \`$TAG\` and attested. With GitHub CLI 2.49 or newer:"
             echo
             echo '```'
             echo "gh attestation verify $APPIMAGE --repo $GITHUB_REPOSITORY"
             echo '```'
             echo
-            echo "Or rebuild it: check out \`$TAG\`, run \`packaging/build-appimage.sh build\`, and"
-            echo "compare the checksum. The build is reproducible."
+            echo "Or rebuild it: check out \`$TAG\`, run \`packaging/build-appimage.sh build\` (it needs"
+            echo "rootless Podman; see the README), and compare the checksum. The build is reproducible."
           } > notes.md
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
-            --title "Lumo ${TAG#v} (unofficial AppImage)" --notes-file notes.md \
+            --title "Lumo ${version%-*} (unofficial AppImage, release ${version##*-})" --notes-file notes.md \
             "dist/$APPIMAGE" "dist/$APPIMAGE.sha256" "dist/$APPIMAGE.zsync"
