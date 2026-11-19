@@ -64,7 +64,7 @@ tao, gets a bug fix from tao's own developers (the last row). (The build does co
 | In-app updater | Proton's update server | Off (no update address) |
 | `proton-lumo://` links | Registered by the package | Registered by the AppImage when it starts (above) |
 | Crash and error reports | Sent to Proton when its build includes Proton's reporting key (there's no setting for it) | Off: the key isn't in the source, and this build doesn't add one |
-| Windows on Wayland | tao 0.35, the windowing library that comes with Proton's version of Tauri, draws its own title bar there. The bar's minimize, maximize and close buttons never get the click, and the Ctrl+L quick-ask box can open as a thin strip with its top and bottom cut off | Both work: tao's own fix, released in tao 0.36, is applied to the tao 0.35.3 Proton's build uses (below) |
+| Windows on Wayland | tao 0.35, the windowing library that comes with Proton's version of Tauri, draws its own title bar there, always with minimize, maximize and close. On KDE Plasma those buttons never get the click, and the Ctrl+L quick-ask box can open as a thin strip with its top and bottom cut off | tao's own fix, released in tao 0.36, is applied to the tao 0.35.3 Proton's build uses (below). The buttons and quick-ask work, and the title bar is your desktop's usual one: on GNOME that means a close button only, as in other GNOME apps |
 
 The AppImage contains the Lumo program and a spare copy of the tray-icon library
 (`libayatana-appindicator`), used only when your system has none. Without one, Lumo can't start.
@@ -165,7 +165,7 @@ maintainer. What makes it so:
   - The app's own default web address is Proton's development environment, so the production
     one is set (above).
   - On Wayland, tao 0.35.3 (the windowing library of Proton's Tauri 2.11) gives windows a title
-    bar whose buttons never get a click ([tauri-apps/tauri#13749](https://github.com/tauri-apps/tauri/issues/13749)),
+    bar of its own, whose buttons never get a click on KDE Plasma ([tauri-apps/tauri#13749](https://github.com/tauri-apps/tauri/issues/13749)),
     and gives the undecorated quick-ask window one too, which can squeeze it to a thin strip.
     tao fixed that in 0.36 ([tauri-apps/tao#1218](https://github.com/tauri-apps/tao/pull/1218)),
     which Tauri 2.11 can't use. The build applies that commit, exactly as tao published it

@@ -11,9 +11,11 @@ Proton's code isn't changed. Compared with Proton's own `.deb` and `.rpm` of the
 
 - **Window fixes on Wayland.** tao, the windowing library that comes with Proton's version of
   Tauri (tao 0.35.3), is built with a fix from tao's own developers
-  ([tauri-apps/tao#1218](https://github.com/tauri-apps/tao/pull/1218), released in tao 0.36). It
-  makes the minimize, maximize and close buttons work on Wayland, and stops the Ctrl+L quick-ask
-  box opening cut off. Proton's packages use the same tao 0.35.3 without the fix.
+  ([tauri-apps/tao#1218](https://github.com/tauri-apps/tao/pull/1218), released in tao 0.36).
+  Windows get your desktop's usual title bar instead of tao's own, so the minimize, maximize and
+  close buttons work on KDE Plasma and the Ctrl+L quick-ask box no longer opens cut off. On GNOME
+  the title bar has a close button only, as GNOME apps do. Proton's packages use the same tao
+  0.35.3 without the fix.
 - **No in-app updater.** Proton's update server only offers `.deb` and `.rpm`. Update by
   downloading the new release, or with Gear Lever or AppImageUpdate.
 - **`proton-lumo://` links** (needed to finish browser sign-in) are registered by the AppImage
@@ -35,7 +37,7 @@ in the README.
 ## 0.5.9-2
 
 Lumo itself is unchanged: still Proton's 0.5.9, from the same commit as 0.5.9-1. This release
-fixes two bugs that show up on Wayland desktops (KDE Plasma, GNOME and others):
+fixes two bugs seen on KDE Plasma under Wayland:
 
 - **The title-bar buttons work.** Minimize, maximize and close did nothing; you could only resize
   the window by dragging its edges. Close hides Lumo to the tray, as in Proton's build.
@@ -43,13 +45,18 @@ fixes two bugs that show up on Wayland desktops (KDE Plasma, GNOME and others):
   strip, with its top and bottom cut off.
 
 Both came from tao 0.35.3, the windowing library in Proton's version of Tauri: on Wayland it gives
-every window a title bar of its own, which takes the clicks meant for the buttons and squeezes the
-borderless quick-ask window ([tauri-apps/tauri#13749](https://github.com/tauri-apps/tauri/issues/13749)).
+every window a title bar of its own, which on KDE Plasma takes the clicks meant for the buttons and
+squeezes the borderless quick-ask window ([tauri-apps/tauri#13749](https://github.com/tauri-apps/tauri/issues/13749)).
 tao's developers fixed it in tao 0.36, which Proton's Tauri version can't use yet, so this build
 applies their fix to tao 0.35.3. Proton's own `.deb` and `.rpm` of 0.5.9 use the same tao without
-the fix, so they are likely to show the same bugs on Wayland. That hasn't been tested here.
+the fix.
 
-Tested on CachyOS with KDE Plasma on Wayland.
+On GNOME (Wayland) the window now has GNOME's usual title bar, with a close button only, as other
+GNOME apps have, where 0.5.9-1 showed tao's minimize, maximize and close.
+
+Tested with KDE Plasma (CachyOS) and GNOME (Fedora 44), both on Wayland. Ctrl+L doesn't open
+quick-ask on GNOME under Wayland, in this release or in 0.5.9-1: Lumo registers it as a
+system-wide shortcut, which GNOME's Wayland session doesn't pass to apps.
 
 ## 0.5.9-1
 
