@@ -1,0 +1,372 @@
+From 07f3742b1833b64be27b1ef991e38d557d4276c9 Mon Sep 17 00:00:00 2001
+From: Daniel Gerhardt <code@dgerhardt.net>
+Date: Mon, 29 Jun 2026 20:37:11 +0200
+Subject: [PATCH] fix(wayland): fix client-side decorations and apply them only
+ when necessary (#1218)
+
+* fix(wayland): remove broken custom CSD
+
+The default client side decoration handling of GTK is now used once
+again. Custom CSD don't make any sense when no custom widgets are added
+to the title bar. Futhermore, the custom CSD didn't work correctly and
+introduced multiple bugs regarding the titlebar and server-side
+rendering on Wayland.
+
+This is mostly a revert of #979.
+
+Fixes #1046, tauri-apps/tauri#13749, tauri-apps/tauri#14251,
+tauri-apps/tauri#14748
+Supersedes #1055
+
+* fix(wayland): propagate window events for CSD
+
+This reverts #941, which broke CSD event handling on Wayland. A new fix
+for #939 might now be needed.
+
+Fixes tauri-apps/tauri#13440
+Might fix (unconfirmed) tauri-apps/tauri#11856
+
+* fix(wayland): ensure compositors don't force decorations
+
+This enables CSD for undecorated windows to ensure that compositors with
+server-side decoration support (e.g. KDE Plasma) do not apply them when
+decorations are disabled for the window. Changing the decoration state
+for existing windows is however still not supported.
+
+This is a workaround for a GTK bug:
+https://gitlab.gnome.org/GNOME/gtk/-/work_items/5479
+
+Fixes #899, tauri-apps/tauri#6562
+
+* chore: add changelog entry for Wayland CSD fixes
+
+* fix(linux): reapply maximize fix from #979
+
+This ensures that the window is resizable before maximizing it to avoid
+unexpected behavior.
+
+* Revert "fix(wayland): propagate window events for CSD"
+
+This reverts commit 25edb8e80fa749a1c771065200a050c355691c19.
+
+* Reapply "fix(wayland): propagate window events for CSD"
+
+This reverts commit 6b11c08744cd2f689add0e6977232bbcbc270e92.
+
+* enable min/max buttons
+
+* prevent crash on wsl/weston when maximizing undecorated window
+
+* prevent duplicate mouse events
+
+* keep default decorations
+
+---------
+
+Co-authored-by: Fabian-Lars <30730186+FabianLars@users.noreply.github.com>
+---
+ src/platform_impl/linux/event_loop.rs     | 96 +++++++++++++----------
+ src/platform_impl/linux/mod.rs            |  1 -
+ src/platform_impl/linux/wayland/header.rs | 36 ---------
+ src/platform_impl/linux/wayland/mod.rs    |  5 --
+ src/platform_impl/linux/window.rs         | 44 ++++++-----
+ 5 files changed, 78 insertions(+), 104 deletions(-)
+ delete mode 100644 src/platform_impl/linux/wayland/header.rs
+ delete mode 100644 src/platform_impl/linux/wayland/mod.rs
+
+diff --git a/src/platform_impl/linux/event_loop.rs b/src/platform_impl/linux/event_loop.rs
+index 4e9fe97..0859023 100644
+--- a/src/platform_impl/linux/event_loop.rs
++++ b/src/platform_impl/linux/event_loop.rs
+@@ -3,7 +3,7 @@
+ // SPDX-License-Identifier: Apache-2.0
+ 
+ use std::{
+-  cell::RefCell,
++  cell::{Cell, RefCell},
+   collections::{HashSet, VecDeque},
+   error::Error,
+   process,
+@@ -695,8 +695,10 @@ impl<T: 'static> EventLoop<T> {
+             });
+ 
+             let tx_clone = event_tx.clone();
++            let last_motion_time = Rc::new(Cell::new(0u32));
+             window.connect_motion_notify_event(move |window, motion| {
+-              if cursor_moved {
++              let last = last_motion_time.replace(motion.time());
++              if cursor_moved && motion.time() != last {
+                 if let Some(cursor) = motion.device() {
+                   let scale_factor = window.scale_factor();
+                   let (_, x, y) = cursor.window_at_position();
+@@ -713,7 +715,7 @@ impl<T: 'static> EventLoop<T> {
+                   }
+                 }
+               }
+-              glib::Propagation::Stop
++              glib::Propagation::Proceed
+             });
+ 
+             let tx_clone = event_tx.clone();
+@@ -730,55 +732,63 @@ impl<T: 'static> EventLoop<T> {
+             });
+ 
+             let tx_clone = event_tx.clone();
++            let last_press_time = Rc::new(Cell::new(0u32));
+             window.connect_button_press_event(move |_, event| {
+-              let button = event.button();
+-              if let Err(e) = tx_clone.send(Event::WindowEvent {
+-                window_id: RootWindowId(id),
+-                event: WindowEvent::MouseInput {
+-                  button: match button {
+-                    1 => MouseButton::Left,
+-                    2 => MouseButton::Middle,
+-                    3 => MouseButton::Right,
+-                    _ => MouseButton::Other(button as u16),
++              let last = last_press_time.replace(event.time());
++              if event.time() != last {
++                let button = event.button();
++                if let Err(e) = tx_clone.send(Event::WindowEvent {
++                  window_id: RootWindowId(id),
++                  event: WindowEvent::MouseInput {
++                    button: match button {
++                      1 => MouseButton::Left,
++                      2 => MouseButton::Middle,
++                      3 => MouseButton::Right,
++                      _ => MouseButton::Other(button as u16),
++                    },
++                    state: ElementState::Pressed,
++                    device_id: DEVICE_ID,
++                    // this field is depracted so it is fine to pass empty state
++                    modifiers: ModifiersState::empty(),
+                   },
+-                  state: ElementState::Pressed,
+-                  device_id: DEVICE_ID,
+-                  // this field is depracted so it is fine to pass empty state
+-                  modifiers: ModifiersState::empty(),
+-                },
+-              }) {
+-                log::warn!(
+-                  "Failed to send mouse input pressed event to event channel: {}",
+-                  e
+-                );
++                }) {
++                  log::warn!(
++                    "Failed to send mouse input pressed event to event channel: {}",
++                    e
++                  );
++                }
+               }
+-              glib::Propagation::Stop
++              glib::Propagation::Proceed
+             });
+ 
+             let tx_clone = event_tx.clone();
++            let last_release_time = Rc::new(Cell::new(0u32));
+             window.connect_button_release_event(move |_, event| {
+-              let button = event.button();
+-              if let Err(e) = tx_clone.send(Event::WindowEvent {
+-                window_id: RootWindowId(id),
+-                event: WindowEvent::MouseInput {
+-                  button: match button {
+-                    1 => MouseButton::Left,
+-                    2 => MouseButton::Middle,
+-                    3 => MouseButton::Right,
+-                    _ => MouseButton::Other(button as u16),
++              let last = last_release_time.replace(event.time());
++              if event.time() != last {
++                let button = event.button();
++                if let Err(e) = tx_clone.send(Event::WindowEvent {
++                  window_id: RootWindowId(id),
++                  event: WindowEvent::MouseInput {
++                    button: match button {
++                      1 => MouseButton::Left,
++                      2 => MouseButton::Middle,
++                      3 => MouseButton::Right,
++                      _ => MouseButton::Other(button as u16),
++                    },
++                    state: ElementState::Released,
++                    device_id: DEVICE_ID,
++                    // this field is depracted so it is fine to pass empty state
++                    modifiers: ModifiersState::empty(),
+                   },
+-                  state: ElementState::Released,
+-                  device_id: DEVICE_ID,
+-                  // this field is depracted so it is fine to pass empty state
+-                  modifiers: ModifiersState::empty(),
+-                },
+-              }) {
+-                log::warn!(
+-                  "Failed to send mouse input released event to event channel: {}",
+-                  e
+-                );
++                }) {
++                  log::warn!(
++                    "Failed to send mouse input released event to event channel: {}",
++                    e
++                  );
++                }
+               }
+-              glib::Propagation::Stop
++              glib::Propagation::Proceed
+             });
+ 
+             let tx_clone = event_tx.clone();
+diff --git a/src/platform_impl/linux/mod.rs b/src/platform_impl/linux/mod.rs
+index 0473f67..aa31754 100644
+--- a/src/platform_impl/linux/mod.rs
++++ b/src/platform_impl/linux/mod.rs
+@@ -15,7 +15,6 @@ mod util;
+ mod window;
+ 
+ pub mod taskbar;
+-pub mod wayland;
+ #[cfg(feature = "x11")]
+ pub mod x11;
+ 
+diff --git a/src/platform_impl/linux/wayland/header.rs b/src/platform_impl/linux/wayland/header.rs
+deleted file mode 100644
+index 480eb4c..0000000
+--- a/src/platform_impl/linux/wayland/header.rs
++++ /dev/null
+@@ -1,36 +0,0 @@
+-use gtk::{prelude::*, ApplicationWindow, EventBox, HeaderBar};
+-
+-pub struct WlHeader;
+-
+-impl WlHeader {
+-  pub fn setup(window: &ApplicationWindow, title: &str) {
+-    let header = HeaderBar::builder()
+-      .show_close_button(true)
+-      .decoration_layout("menu:minimize,maximize,close")
+-      .title(title)
+-      .build();
+-
+-    let event_box = EventBox::new();
+-    event_box.set_above_child(true);
+-    event_box.set_visible(true);
+-    event_box.set_can_focus(false);
+-    event_box.add(&header);
+-
+-    window.set_titlebar(Some(&event_box));
+-    Self::connect_resize_window(&header, window);
+-  }
+-
+-  fn connect_resize_window(header: &HeaderBar, window: &ApplicationWindow) {
+-    let header_weak = header.downgrade();
+-    window.connect_resizable_notify(move |window| {
+-      if let Some(header) = header_weak.upgrade() {
+-        let is_resizable = window.is_resizable();
+-        header.set_decoration_layout(if !is_resizable {
+-          Some("menu:minimize,close")
+-        } else {
+-          Some("menu:minimize,maximize,close")
+-        });
+-      }
+-    });
+-  }
+-}
+diff --git a/src/platform_impl/linux/wayland/mod.rs b/src/platform_impl/linux/wayland/mod.rs
+deleted file mode 100644
+index a200d26..0000000
+--- a/src/platform_impl/linux/wayland/mod.rs
++++ /dev/null
+@@ -1,5 +0,0 @@
+-// Copyright 2014-2021 The winit contributors
+-// Copyright 2021-2023 Tauri Programme within The Commons Conservancy
+-// SPDX-License-Identifier: Apache-2.0
+-
+-pub mod header;
+diff --git a/src/platform_impl/linux/window.rs b/src/platform_impl/linux/window.rs
+index eb63901..0308f1b 100644
+--- a/src/platform_impl/linux/window.rs
++++ b/src/platform_impl/linux/window.rs
+@@ -16,7 +16,7 @@ use gtk::{
+   gdk::WindowState,
+   glib::{self, translate::ToGlibPtr},
+   prelude::*,
+-  CssProvider, Settings,
++  CssProvider, EventBox, Settings,
+ };
+ 
+ use crate::{
+@@ -24,7 +24,6 @@ use crate::{
+   error::{ExternalError, NotSupportedError, OsError as RootOsError},
+   icon::Icon,
+   monitor::MonitorHandle as RootMonitorHandle,
+-  platform_impl::wayland::header::WlHeader,
+   window::{
+     CursorIcon, Fullscreen, ProgressBarState, ResizeDirection, Theme, UserAttentionType,
+     WindowAttributes, WindowSizeConstraints, RGBA,
+@@ -85,7 +84,6 @@ impl Window {
+     let app = &event_loop_window_target.app;
+     let window_requests_tx = event_loop_window_target.window_requests_tx.clone();
+     let draw_tx = event_loop_window_target.draw_tx.clone();
+-    let is_wayland = event_loop_window_target.is_wayland();
+ 
+     let mut window_builder = gtk::ApplicationWindow::builder()
+       .application(app)
+@@ -96,10 +94,6 @@ impl Window {
+ 
+     let window = window_builder.build();
+ 
+-    if is_wayland {
+-      WlHeader::setup(&window, &attributes.title);
+-    }
+-
+     let window_id = WindowId(window.id());
+     event_loop_window_target
+       .windows
+@@ -112,18 +106,25 @@ impl Window {
+       .inner_size
+       .map(|size| size.to_logical::<f64>(win_scale_factor as f64).into())
+       .unwrap_or((800, 600));
+-    window.set_default_size(1, 1);
+-    window.resize(width, height);
+-
+-    if attributes.maximized {
+-      let maximize_process = util::WindowMaximizeProcess::new(window.clone(), attributes.resizable);
+-      glib::idle_add_local_full(glib::Priority::HIGH_IDLE, move || {
+-        let mut maximize_process = maximize_process.borrow_mut();
+-        maximize_process.next_step()
+-      });
+-    } else {
+-      window.set_resizable(attributes.resizable);
+-    }
++
++    window.set_default_size(width, height);
++
++    // Trying to prevent Wayland Protocol Error about mismatched xdg_surface_buffer sizes
++    let maximized = attributes.maximized;
++    let resizable = attributes.resizable;
++    let configure_handler_id = Rc::new(RefCell::new(None));
++    let configure_handler_id_ = configure_handler_id.clone();
++    let id = window.connect_configure_event(move |window, _| {
++      if let Some(id) = configure_handler_id_.take() {
++        window.disconnect(id);
++        if maximized {
++          window.maximize();
++        }
++        window.set_resizable(resizable);
++      }
++      false
++    });
++    configure_handler_id.borrow_mut().replace(id);
+ 
+     window.set_deletable(attributes.closable);
+ 
+@@ -189,6 +190,11 @@ impl Window {
+     }
+     window.set_visible(attributes.visible);
+     window.set_decorated(attributes.decorations);
++    if window.display().backend().is_wayland() && !attributes.decorations {
++      // Enable CSD to prevent compositor from rendering server-side decorations
++      let event_box = EventBox::new();
++      window.set_titlebar(Some(&event_box));
++    }
+ 
+     if attributes.always_on_bottom {
+       window.set_keep_below(attributes.always_on_bottom);
+-- 
+2.43.0
+

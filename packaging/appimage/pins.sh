@@ -20,6 +20,13 @@ NODE_SHA256="1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce"
 RUNTIME_URL="https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64"
 RUNTIME_SHA256="2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d"
 
+# tao, Tauri's windowing library, at the version Proton's Cargo.lock pins (with this checksum).
+# The build applies tao's own fix for dead title-bar buttons on Wayland to it
+# (patches/tao-0.35.3-wayland-decorations.patch), and stops if Proton's lock moves to another
+# tao: tao 0.36.0 and later already have the fix, so then the patch and these two lines go.
+TAO_VERSION="0.35.3"
+TAO_SHA256="d1c93047acf68669466a34690ac58cca7010bd1b201e1ec86f1fd0a75d3dd4a9"
+
 # Where releases are published: the AppImage's update information names this repository's
 # latest GitHub release, for AppImageUpdate, Gear Lever and AppImageLauncher.
 GITHUB_OWNER="DigitalArchon"

@@ -54,8 +54,9 @@ web data and logs in `~/.local/share/me.proton.lumo-app/`, and secrets in your k
 ## How it differs from Proton's Linux packages
 
 Proton's code isn't changed. Four things are set differently when it's built, all through the
-build's own settings rather than by editing Proton's files. (The build does correct one line of
-Proton's `Cargo.lock`, the lockfile; see [the reproducible build](#the-reproducible-build).)
+build's own settings rather than by editing Proton's files, and one library Proton's code uses,
+tao, gets a bug fix from tao's own developers (the last row). (The build does correct Proton's
+`Cargo.lock`, the lockfile, to match; see [the reproducible build](#the-reproducible-build).)
 
 | | Proton's `.deb`/`.rpm` | This AppImage |
 |---|---|---|
@@ -63,6 +64,7 @@ Proton's `Cargo.lock`, the lockfile; see [the reproducible build](#the-reproduci
 | In-app updater | Proton's update server | Off (no update address) |
 | `proton-lumo://` links | Registered by the package | Registered by the AppImage when it starts (above) |
 | Crash and error reports | Sent to Proton when its build includes Proton's reporting key (there's no setting for it) | Off: the key isn't in the source, and this build doesn't add one |
+| Windows on Wayland | tao 0.35, the windowing library that comes with Proton's version of Tauri, draws its own title bar there. The bar's minimize, maximize and close buttons never get the click, and the Ctrl+L quick-ask box can open as a thin strip with its top and bottom cut off | Both work: tao's own fix, released in tao 0.36, is applied to the tao 0.35.3 Proton's build uses (below) |
 
 The AppImage contains the Lumo program and a spare copy of the tray-icon library
 (`libayatana-appindicator`), used only when your system has none. Without one, Lumo can't start.
@@ -150,16 +152,27 @@ maintainer. What makes it so:
   build now puts those files in a tmpfs, which lists files in the order they were created (oldest
   or newest first, depending on the kernel). It works out which, creates the files so every folder
   lists in sorted order, checks that they do, and fails on a kernel where they don't.
-- **Two upstream quirks are handled:**
+- **Three upstream quirks are handled:**
   - Proton's `Cargo.lock` for 0.5.9 still records the app itself as 0.5.8. The build changes
     that one line to 0.5.9, which is what Cargo does on its own in a normal build. Proton's
     build tool runs Cargo without `--locked`, so Proton's own 0.5.9 build should have made the
     same change. This build runs Cargo with `--locked`, which forbids any other change to the
     lockfile, so every other mismatch still stops the build. Nothing is compiled from that line:
-    the version built in comes from `Cargo.toml`. This is the only change this build makes to
-    Proton's files.
+    the version built in comes from `Cargo.toml`.
   - The app's own default web address is Proton's development environment, so the production
     one is set (above).
+  - On Wayland, tao 0.35.3 (the windowing library of Proton's Tauri 2.11) gives windows a title
+    bar whose buttons never get a click ([tauri-apps/tauri#13749](https://github.com/tauri-apps/tauri/issues/13749)),
+    and gives the undecorated quick-ask window one too, which can squeeze it to a thin strip.
+    tao fixed that in 0.36 ([tauri-apps/tao#1218](https://github.com/tauri-apps/tao/pull/1218)),
+    which Tauri 2.11 can't use. The build applies that commit, exactly as tao published it
+    ([`packaging/appimage/patches/`](packaging/appimage/patches/)), to tao 0.35.3, after
+    checking the download against the checksum in Proton's `Cargo.lock`. Cargo builds the patched
+    copy in its place, through a `[patch]` given on Cargo's command line, not written into
+    Proton's files. In the lockfile, tao's entry loses its `source` and `checksum` lines, as
+    Cargo records any patched crate. With the version line above, those are the only changes
+    this build makes to Proton's files. If Proton's lockfile moves to another tao, the build
+    stops, so the patch is dropped once Proton's Tauri brings tao 0.36.
 
 To check reproducibility yourself, `packaging/build-appimage.sh check` builds twice from scratch
 and compares. A difference that depends on the machine only shows up when you compare builds from
