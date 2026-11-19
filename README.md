@@ -102,7 +102,10 @@ nothing of Proton's code is changed in it.
 3. **The maintainer** builds the same tag on their own machine, checks the checksums match, and
    only then publishes the draft. A release isn't published on GitHub's word alone.
 
-A fix to the packaging itself gets the next number: `v0.5.9-2`, `v0.5.9-3`, and so on.
+A fix to the packaging itself gets the next number: `v0.5.9-2`, `v0.5.9-3`, and so on. Lumo's
+own version stays Proton's. [`RELEASE-NOTES.md`](RELEASE-NOTES.md) says what each release changes
+and how every release differs from Proton's packages. The release workflow puts both into the
+release's notes, after Proton's own changelog for that version.
 
 ## Checking a download
 

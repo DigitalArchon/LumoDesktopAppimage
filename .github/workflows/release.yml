@@ -106,6 +106,15 @@ jobs:
           name: appimage
           path: dist
 
+      # RELEASE-NOTES.md, as the tag has it, for the release notes
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.build.outputs.tag }}
+          path: src
+          sparse-checkout: RELEASE-NOTES.md
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       # The tag names the version the AppImage says it is, or nothing is released.
       - name: Tag matches the version
         env:
@@ -130,10 +139,28 @@ jobs:
           TAG: ${{ needs.build.outputs.tag }}
         run: |
           version="${TAG#v}"
+          # one "## <heading>" section of RELEASE-NOTES.md, without its heading
+          section() {
+            awk -v head="## $1" '$0 == head {p = 1; next} p && /^## / {exit} p' src/RELEASE-NOTES.md
+          }
+          this_release="$(section "$version")"
+          differences="$(section "How it differs from Proton's packages")"
+          if ! grep -q '[^[:space:]]' <<< "$differences"; then
+            echo "RELEASE-NOTES.md has no section on how the AppImage differs from Proton's packages" >&2
+            exit 1
+          fi
           {
             echo "Unofficial AppImage of Proton's Lumo Desktop ${version%-*} (packaging release ${version##*-}),"
-            echo "built from Proton's source with no changes to Proton's code. See the README for what it"
-            echo "needs and how it differs from Proton's .deb/.rpm."
+            echo "built from Proton's source with no changes to Proton's code. How it differs from Proton's"
+            echo ".deb/.rpm is below; the README says what it needs."
+            if grep -q '[^[:space:]]' <<< "$this_release"; then
+              echo
+              echo "## What's new in $version"
+              echo "$this_release"
+            fi
+            echo
+            echo "## How it differs from Proton's .deb and .rpm"
+            echo "$differences"
             echo
             echo "## Changes in Lumo ${version%-*} (from Proton's changelog)"
             if grep -q '[^[:space:]]' dist/upstream-changes.md; then
