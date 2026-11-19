@@ -5,11 +5,54 @@ for its Lumo AI assistant, for the Linux distributions Proton doesn't package it
 CachyOS, Manjaro, openSUSE, and anything else that isn't served by Proton's `.deb` and `.rpm`.
 
 It's built from Proton's published source **with no changes to Proton's code**, by a build
-anyone can repeat and get the same file, byte for byte.
+anyone can repeat and get the same file, byte for byte. It's also built to work properly outside
+Proton's packages. If you only put Lumo's files into an AppImage, sign-in, the window buttons
+and more break on many systems. This one fixes each of those problems (below).
 
 > **Unofficial.** This project isn't affiliated with, sponsored or endorsed by Proton AG.
 > "Proton" and "Lumo" are trademarks of Proton AG. Report problems with Lumo itself to
 > [Proton](https://github.com/ProtonLumo/lumo-desktop), and problems with the AppImage here.
+
+## What it fixes
+
+If another Lumo AppImage won't finish signing in, its window buttons do nothing, or it opens a
+blank window, these are the usual causes. This AppImage fixes all of them:
+
+**Since 0.5.9-2**
+
+- **The title-bar buttons work on Wayland.** The windowing library in Proton's version of Tauri
+  (tao 0.35) draws its own title bar on Wayland. On KDE Plasma that title bar's minimize,
+  maximize and close buttons never get the click, so the window can only be resized from its
+  edges. Proton's own `.deb` and `.rpm` use the same tao. This build applies tao's own fix,
+  from tao 0.36, so your desktop draws its usual title bar.
+- **Ctrl+L quick-ask opens whole.** The same bug squeezes the quick-ask box into a thin strip
+  with its top and bottom cut off, on screens larger than 1280×800. The same fix stops it.
+
+**Since 0.5.9-1**
+
+- **Browser sign-in finishes.** Sign-in happens in your browser, which hands the session back
+  through a `proton-lumo://` link. Proton's packages register that link type when they're
+  installed. An AppImage isn't installed, so without help the browser has nowhere to send the
+  link and the app never signs in. This AppImage registers itself each time it starts, wherever
+  you've put it, so moving the file doesn't break sign-in.
+- **No blank window on Arch-based systems.** It uses your system's WebKitGTK instead of a
+  bundled copy. WebKitGTK has to match your graphics drivers, which a bundled copy often doesn't.
+  Using the system copy also gets you your distribution's security fixes for the engine that
+  renders a web app.
+- **It starts on desktops without a tray library.** Lumo won't start without
+  a tray-icon library (`libayatana-appindicator`), and not every system has one installed. A
+  spare copy is inside, used only when your system has none.
+- **It loads the real Lumo.** Built from Proton's source with nothing set, the app loads
+  `lumo.proton.dev`, a Proton development environment. This build sets
+  `https://lumo.proton.me`, as Proton's packages do.
+- **Updates that work.** Proton's update server only offers `.deb` and `.rpm`, so the in-app
+  updater is off. Gear Lever and AppImageUpdate update the AppImage from this repository's
+  releases instead (below).
+
+None of these fixes changes Proton's code. They're build settings, a startup step in the
+AppImage, and a patch from tao's own developers, all listed in
+[How it differs](#how-it-differs-from-protons-linux-packages). [`RELEASE-NOTES.md`](RELEASE-NOTES.md)
+has the details for each release.
 
 ## Using it
 
