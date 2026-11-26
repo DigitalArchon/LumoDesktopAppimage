@@ -51,7 +51,7 @@ npm ci --ignore-scripts --no-progress
 
 # The build paths are mapped out of everything compiled: Rust's panic locations name source
 # files, and aws-lc's C code is built with __FILE__ in its assertions.
-export RUSTFLAGS="--remap-path-prefix=$W/src=/build --remap-path-prefix=$W/tao=/tao --remap-path-prefix=$CARGO_HOME=/cargo --remap-path-prefix=/opt/rust=/rust"
+export RUSTFLAGS="--remap-path-prefix=$W/src=/build --remap-path-prefix=$CARGO_HOME=/cargo --remap-path-prefix=/opt/rust=/rust"
 export CFLAGS="-ffile-prefix-map=$W/src=/build -ffile-prefix-map=$CARGO_HOME=/cargo"
 export CXXFLAGS="$CFLAGS"
 export CARGO_INCREMENTAL=0 CARGO_TERM_PROGRESS_WHEN=never
@@ -67,34 +67,23 @@ crate_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' src-tauri/Cargo.toml | hea
 sed -i "/^name = \"lumo\"\$/{n;s/^version = \".*\"\$/version = \"$crate_version\"/}" src-tauri/Cargo.lock
 grep -A1 -x 'name = "lumo"' src-tauri/Cargo.lock | grep -qx "version = \"$crate_version\""
 
-# tao 0.35, the windowing library of Proton's Tauri (2.11), puts its own title bar on a window
-# under Wayland, and that bar's minimize, maximize and close buttons never get the click
-# (tauri-apps/tauri#13749). tao fixed it in 0.36 (tauri-apps/tao#1218), which Tauri 2.11 can't
-# take, so that commit, as tao published it, is applied to the tao Proton's lock pins, and Cargo
-# builds the patched copy in its place ([patch], given on the command line). A patched crate's
-# lock entry has no source or checksum, so those two lines of the tao entry go; --locked still
-# holds the rest. If Proton's lock names another tao, the build stops: see pins.sh.
-lock_registry='registry+https://github.com/rust-lang/crates.io-index'
-if [ "$(grep -A3 -x 'name = "tao"' src-tauri/Cargo.lock)" != "name = \"tao\"
-version = \"$TAO_VERSION\"
-source = \"$lock_registry\"
-checksum = \"$TAO_SHA256\"" ]; then
-    echo "Proton's Cargo.lock doesn't pin tao $TAO_VERSION ($TAO_SHA256). If its tao is 0.36 or" \
-         "newer, drop the tao patch (pins.sh, patches/); otherwise see whether it still applies." >&2
+# tao, the windowing library of Proton's Tauri, put its own title bar on a window under Wayland
+# up to 0.35, and that bar's minimize, maximize and close buttons never got the click
+# (tauri-apps/tauri#13749); the borderless quick-ask window got one too, which squeezed it to a
+# strip. tao 0.36 fixed it (tauri-apps/tao#1218). 0.5.9-2 patched Proton's tao 0.35.3 with that
+# commit; from 0.5.10 Proton's lock has a tao with the fix, built as it is. The build stops if
+# the lock ever names an older one.
+tao_version="$(grep -A1 -x 'name = "tao"' src-tauri/Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')"
+if [[ ! "$tao_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+   || [ "$(printf '%s\n' 0.36.0 "$tao_version" | sort -V | head -1)" != 0.36.0 ]; then
+    echo "Proton's Cargo.lock has tao '${tao_version}', not one tao of 0.36.0 or newer: windows" \
+         "would lose their working title bar on Wayland (tauri-apps/tao#1218)." >&2
     exit 1
 fi
-fetch "https://static.crates.io/crates/tao/tao-$TAO_VERSION.crate" "$TAO_SHA256" "/cache/tao-$TAO_VERSION.crate"
-mkdir "$W/tao"
-tar -xzf "/cache/tao-$TAO_VERSION.crate" -C "$W/tao" --strip-components=1 --no-same-owner
-patch -d "$W/tao" -p1 --no-backup-if-mismatch --forward --quiet < "$P/patches/tao-$TAO_VERSION-wayland-decorations.patch"
-sed -i "/^name = \"tao\"\$/{n;n;N;/^source = \"[^\"]*\"\\nchecksum = \"$TAO_SHA256\"\$/d}" src-tauri/Cargo.lock
-tao_patch="patch.crates-io.tao.path=\"$W/tao\""
-# the patched copy is the one Cargo resolves, or nothing is built
-cargo tree --locked --manifest-path src-tauri/Cargo.toml --config "$tao_patch" \
-    --invert "tao@$TAO_VERSION" --depth 0 --prefix none | grep -qxF "tao v$TAO_VERSION ($W/tao)"
 
 # The webview bundles, built here rather than by Tauri (tauri.appimage.json empties its
-# beforeBuildCommand). tauri-codegen walks this folder in the order the file system lists it,
+# beforeBuildCommand, whose other step, scripts/build-tools-helper.mjs, builds a macOS helper
+# and does nothing on Linux). tauri-codegen walks this folder in the order the file system lists it,
 # unsorted, and compiles each script's CSP hash into the binary in that order. ext4 lists a
 # folder in a hash order seeded per file system, so one commit gave one binary on MintDev and
 # another on p330-2 (Nov 2026: the same 13 hashes, reordered). So the folder is copied into a
@@ -131,7 +120,7 @@ while IFS= read -r dir; do
 done < <(find /distfs/dist -type d)
 rm -rf src-tauri/dist
 ln -s /distfs/dist src-tauri/dist
-npx --no-install tauri build --no-bundle --ci --config "$P/tauri.appimage.json" -- --locked --config "$tao_patch"
+npx --no-install tauri build --no-bundle --ci --config "$P/tauri.appimage.json" -- --locked
 BIN="$W/src/src-tauri/target/release/lumo-desktop"
 
 # AppDir layout (AppImage spec): entry point, desktop entry, icon

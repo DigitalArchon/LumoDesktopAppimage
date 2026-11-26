@@ -9,13 +9,6 @@ section on Proton's packages into the GitHub release, so links here are full URL
 
 Proton's code isn't changed. Compared with Proton's own `.deb` and `.rpm` of the same version:
 
-- **Window fixes on Wayland.** tao, the windowing library that comes with Proton's version of
-  Tauri (tao 0.35.3), is built with a fix from tao's own developers
-  ([tauri-apps/tao#1218](https://github.com/tauri-apps/tao/pull/1218), released in tao 0.36).
-  Windows get your desktop's usual title bar instead of tao's own, so the minimize, maximize and
-  close buttons work on KDE Plasma and the Ctrl+L quick-ask box no longer opens cut off. On GNOME
-  the title bar has a close button only, as GNOME apps do. Proton's packages use the same tao
-  0.35.3 without the fix.
 - **No in-app updater.** Proton's update server only offers `.deb` and `.rpm`. Update by
   downloading the new release, or with Gear Lever or AppImageUpdate.
 - **`proton-lumo://` links** (needed to finish browser sign-in) are registered by the AppImage
@@ -27,12 +20,20 @@ Proton's code isn't changed. Compared with Proton's own `.deb` and `.rpm` of the
   source defaults to a Proton development environment.
 - **A spare tray-icon library** (`libayatana-appindicator`) is inside, used only when your system
   has none. Everything else, WebKitGTK included, comes from your system.
-- **Proton's `Cargo.lock`** gets two corrections: the app's own version line, where Proton's lock
-  lags the app (it says 0.5.8 in 0.5.9; Cargo makes the same change on its own), and tao's entry
-  losing its `source` and `checksum` lines, as Cargo records any patched library.
+- **Proton's `Cargo.lock`** is corrected only where it lags the app's own version (0.5.9's said
+  0.5.8; Cargo makes the same change on its own). 0.5.10's needs no correction.
 
 Details: [How it differs from Proton's Linux packages](https://github.com/DigitalArchon/LumoDesktopAppimage#how-it-differs-from-protons-linux-packages)
 in the README.
+
+## 0.5.10-1
+
+Proton's Lumo 0.5.10; Proton's changelog for it is below.
+
+The Wayland window fixes of 0.5.9-2 stay, and now come from Proton: Lumo 0.5.10 is built on a
+newer Tauri, whose windowing library (tao 0.37.3) already includes the fix this AppImage applied
+to tao 0.35.3 in 0.5.9-2. So this build no longer patches tao, and Proton's own `.deb` and `.rpm`
+of 0.5.10 have the fix too. The build stops if a later Lumo goes back to a tao without it.
 
 ## 0.5.9-2
 

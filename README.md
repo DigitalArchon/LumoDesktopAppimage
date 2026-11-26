@@ -18,18 +18,6 @@ and more break on many systems. This one fixes each of those problems (below).
 If another Lumo AppImage won't finish signing in, its window buttons do nothing, or it opens a
 blank window, these are the usual causes. This AppImage fixes all of them:
 
-**Since 0.5.9-2**
-
-- **The title-bar buttons work on Wayland.** The windowing library in Proton's version of Tauri
-  (tao 0.35) draws its own title bar on Wayland. On KDE Plasma that title bar's minimize,
-  maximize and close buttons never get the click, so the window can only be resized from its
-  edges. Proton's own `.deb` and `.rpm` use the same tao. This build applies tao's own fix,
-  from tao 0.36, so your desktop draws its usual title bar.
-- **Ctrl+L quick-ask opens whole.** The same bug squeezes the quick-ask box into a thin strip
-  with its top and bottom cut off, on screens larger than 1280×800. The same fix stops it.
-
-**Since 0.5.9-1**
-
 - **Browser sign-in finishes.** Sign-in happens in your browser, which hands the session back
   through a `proton-lumo://` link. Proton's packages register that link type when they're
   installed. An AppImage isn't installed, so without help the browser has nowhere to send the
@@ -49,10 +37,15 @@ blank window, these are the usual causes. This AppImage fixes all of them:
   updater is off. Gear Lever and AppImageUpdate update the AppImage from this repository's
   releases instead (below).
 
-None of these fixes changes Proton's code. They're build settings, a startup step in the
-AppImage, and a patch from tao's own developers, all listed in
-[How it differs](#how-it-differs-from-protons-linux-packages). [`RELEASE-NOTES.md`](RELEASE-NOTES.md)
-has the details for each release.
+None of these fixes changes Proton's code. They're build settings and a startup step in the
+AppImage, all listed in [How it differs](#how-it-differs-from-protons-linux-packages).
+[`RELEASE-NOTES.md`](RELEASE-NOTES.md) has the details for each release.
+
+**Wayland title bars.** In 0.5.9, the windowing library in Proton's version of Tauri (tao 0.35)
+drew its own title bar on Wayland, whose minimize, maximize and close buttons never got the
+click on KDE Plasma, and squeezed the Ctrl+L quick-ask box into a thin strip. 0.5.9-2 of this
+AppImage fixed that by building tao with tao's own fix. From 0.5.10, Proton's Tauri brings
+tao 0.37, which has the fix, so Proton's packages and this AppImage both get it without a patch.
 
 ## Using it
 
@@ -97,9 +90,8 @@ web data and logs in `~/.local/share/me.proton.lumo-app/`, and secrets in your k
 ## How it differs from Proton's Linux packages
 
 Proton's code isn't changed. Four things are set differently when it's built, all through the
-build's own settings rather than by editing Proton's files, and one library Proton's code uses,
-tao, gets a bug fix from tao's own developers (the last row). (The build does correct Proton's
-`Cargo.lock`, the lockfile, to match; see [the reproducible build](#the-reproducible-build).)
+build's own settings rather than by editing Proton's files. (The build can correct one line of
+Proton's `Cargo.lock`, the lockfile; see [the reproducible build](#the-reproducible-build).)
 
 | | Proton's `.deb`/`.rpm` | This AppImage |
 |---|---|---|
@@ -107,7 +99,6 @@ tao, gets a bug fix from tao's own developers (the last row). (The build does co
 | In-app updater | Proton's update server | Off (no update address) |
 | `proton-lumo://` links | Registered by the package | Registered by the AppImage when it starts (above) |
 | Crash and error reports | Sent to Proton when its build includes Proton's reporting key (there's no setting for it) | Off: the key isn't in the source, and this build doesn't add one |
-| Windows on Wayland | tao 0.35, the windowing library that comes with Proton's version of Tauri, draws its own title bar there, always with minimize, maximize and close. On KDE Plasma those buttons never get the click, and the Ctrl+L quick-ask box can open as a thin strip with its top and bottom cut off | tao's own fix, released in tao 0.36, is applied to the tao 0.35.3 Proton's build uses (below). The buttons and quick-ask work, and the title bar is your desktop's usual one: on GNOME that means a close button only, as in other GNOME apps |
 
 The AppImage contains the Lumo program and a spare copy of the tray-icon library
 (`libayatana-appindicator`), used only when your system has none. Without one, Lumo can't start.
@@ -199,26 +190,22 @@ maintainer. What makes it so:
   or newest first, depending on the kernel). It works out which, creates the files so every folder
   lists in sorted order, checks that they do, and fails on a kernel where they don't.
 - **Three upstream quirks are handled:**
-  - Proton's `Cargo.lock` for 0.5.9 still records the app itself as 0.5.8. The build changes
-    that one line to 0.5.9, which is what Cargo does on its own in a normal build. Proton's
-    build tool runs Cargo without `--locked`, so Proton's own 0.5.9 build should have made the
-    same change. This build runs Cargo with `--locked`, which forbids any other change to the
-    lockfile, so every other mismatch still stops the build. Nothing is compiled from that line:
-    the version built in comes from `Cargo.toml`.
+  - Proton's `Cargo.lock` can lag the app's own version: 0.5.9's recorded the app itself as
+    0.5.8. The build sets that one line to the version in `Cargo.toml`, which is what Cargo does
+    on its own in a normal build. Proton's build tool runs Cargo without `--locked`, so Proton's
+    own 0.5.9 build should have made the same change. This build runs Cargo with `--locked`,
+    which forbids any other change to the lockfile, so every other mismatch still stops the
+    build. Nothing is compiled from that line: the version built in comes from `Cargo.toml`. It
+    is the only change this build can make to Proton's files, and 0.5.10's lockfile needs none.
   - The app's own default web address is Proton's development environment, so the production
     one is set (above).
-  - On Wayland, tao 0.35.3 (the windowing library of Proton's Tauri 2.11) gives windows a title
-    bar of its own, whose buttons never get a click on KDE Plasma ([tauri-apps/tauri#13749](https://github.com/tauri-apps/tauri/issues/13749)),
-    and gives the undecorated quick-ask window one too, which can squeeze it to a thin strip.
-    tao fixed that in 0.36 ([tauri-apps/tao#1218](https://github.com/tauri-apps/tao/pull/1218)),
-    which Tauri 2.11 can't use. The build applies that commit, exactly as tao published it
-    ([`packaging/appimage/patches/`](packaging/appimage/patches/)), to tao 0.35.3, after
-    checking the download against the checksum in Proton's `Cargo.lock`. Cargo builds the patched
-    copy in its place, through a `[patch]` given on Cargo's command line, not written into
-    Proton's files. In the lockfile, tao's entry loses its `source` and `checksum` lines, as
-    Cargo records any patched crate. With the version line above, those are the only changes
-    this build makes to Proton's files. If Proton's lockfile moves to another tao, the build
-    stops, so the patch is dropped once Proton's Tauri brings tao 0.36.
+  - Up to tao 0.35, the windowing library of Proton's Tauri gave windows a title bar of its own
+    on Wayland, whose buttons never got a click on KDE Plasma ([tauri-apps/tauri#13749](https://github.com/tauri-apps/tauri/issues/13749)),
+    and gave the undecorated quick-ask window one too, which could squeeze it to a thin strip.
+    tao fixed that in 0.36 ([tauri-apps/tao#1218](https://github.com/tauri-apps/tao/pull/1218)).
+    0.5.9-2 applied that commit to Proton's tao 0.35.3; from 0.5.10 Proton's lockfile has tao
+    0.37.3, which includes it, so tao is built as Proton pins it. The build stops if the
+    lockfile ever names a tao older than 0.36.
 
 To check reproducibility yourself, `packaging/build-appimage.sh check` builds twice from scratch
 and compares. A difference that depends on the machine only shows up when you compare builds from
